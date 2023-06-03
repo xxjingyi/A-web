@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test</title>
+    <style>
+        .main {
+            margin-top: 5%;
+            text-align: center;
+            margin-bottom: 5%;
+        }
+
+        .head-b {
+            font-family: 'F';
+            font-size: medium;
+        }
+
+        .last {
+            font-family: 'F';
+            font-size: large;
+        }
+
+        #tips {
+            font-family: 'F';
+            font-size: large;
+        }
+
+        body {
+            background-color: #1d1d1f;
+        }
+
+        p {
+            color: #fafafa;
+        }
+
+        h4 {
+            color: #fafafa;
+        }
+
+        button {
+            background-color: #1d1d1f;
+            color: #fafafa;
+            border: none;
+            height: 25px;
+            width: 100%;
+            font-size: medium;
+        }
+
+        table {
+            text-align: center;
+            margin: 0px auto;
+        }
+
+        td {
+            width: 15%;
+            height: 5%;
+        }
+    </style>
+</head>
+
+<body>
+    <div>
+        <button id="clickme">
+            <p><strong class="head-b">连接至 Arduino Uno</strong>
+            <p>
+        </button>
+        <h4 id="device-name"></h4>
+    </div>
+
+    <div class="main">
+        <table>
+            <tr>
+                <td></td>
+                <td>
+                    <h4>当前状态</h4>
+                </td>
+                <td>
+                    <h4>目标状态</h4>
+                </td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>
+                    <h4>温度</h4>
+                </td>
+                <td>
+                    <p id="t"></p>
+                </td>
+                <td>
+                    <p id="t-t"></p>
+                </td>
+                <td>
+                    <p class="last">°C</p>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <h4>湿度</h4>
+                </td>
+                <td>
+                    <p id="h"></p>
+                </td>
+                <td>
+                    <p id="t-h"></p>
+                </td>
+                <td>
+                    <p class="last">%RH</p>
+                </td>
+            </tr>
+        </table>
+    </div>
+    <div class="tip">
+        <p id="tips"></p>
+    </div>
+
+    <script>
+        let port;
+
+        async function setup() {
+            document.getElementById('device-name').innerHTML = '准备连接设备';
+            document.getElementById('tips').innerHTML = 'Initialization Completed';
+            document.getElementById('t-t').innerHTML = '25';
+            document.getElementById('t-h').innerHTML = '80';
+        }
+
+        async function testIt() {
+            try {
+                port = await navigator.usb.requestDevice({ filters: [{ vendorId: 0x2341 }] });
+                await port.open();
+                await port.selectConfiguration(1);
+                await port.claimInterface(2);
+                document.getElementById('device-name').innerHTML = '<strong>Arduino Uno 已连接</strong>';
+                initializeWebUSB(port);
+            } catch (ex) {
+                if (ex.name === 'NotFoundError') {
+                    document.getElementById('device-name').innerHTML = '<strong>未找到设备</strong>';
+                    document.getElementById('tips').innerHTML = 'Device NOT found';
+                } else {
+                    document.getElementById('device-name').innerHTML = ex;
+                }
+            }
+        }
+
+        let receivedData = ''; // 用于存储接收到的数据
+
+        async function initializeWebUSB(port) {
+            try {
+                const endpointIn = port.endpointIn(2);
+                const endpointOut = port.endpointOut(2);
+
+                document.getElementById('tips').innerHTML = 'Connected to Arduino UNO'
+
+                // 等待4秒钟
+                await new Promise(resolve => setTimeout(resolve, 4000));
+
+                while (true) {
+                    const result = await endpointIn.transferIn(64);
+                    const decoder = new TextDecoder();
+                    const data = decoder.decode(result.data.buffer);
+                    receivedData += data.replace(/\r?\n|\r/g, ''); // 替换换行符为空字符串
+
+                    if (receivedData.length >= 6) {
+                        const sixChars = receivedData.substring(0, 6); // 获取前六个字符
+                        receivedData = ''; // 清空变量
+                        console.log('记录的数据:', sixChars);
+                        // 在这里可以将六个字符记录到其他地方，如存储到数组或发送到服务器等
+                        show(sixChars);
+                    }
+                }
+            } catch (error) {
+                console.error('WebUSB通信错误:', error);
+            }
+        }
+
+        async function show(data) {
+            const status = data.substring(0, 2);
+            const humidity = data.substring(2, 4);
+            const temperature = data.substring(4, 6);
+            document.getElementById('t').innerHTML = temperature;
+            document.getElementById('h').innerHTML = humidity;
+            if (status == 'CE') {
+                document.getElementById('tips').innerHTML = 'Status: Check Sum Error';
+            }
+            else if (status == 'TE') {
+                document.getElementById('tips').innerHTML = 'Status: Time Out Error';
+            }
+            else if (status == 'OK') {
+                document.getElementById('tips').innerHTML = 'Status: Run Correctly';
+            }
+            else {
+                document.getElementById('tips').innerHTML = 'Status: Unknown Error';
+            }
+        }
+
+        setup();
+        document.getElementById('clickme').addEventListener('click', testIt);
+    </script>
+</body>
+
+</html>
